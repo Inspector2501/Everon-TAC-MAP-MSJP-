@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ArmA Reforger - Everon Tactical C2 Hub</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+
+  <!-- Leaflet Geoman / Drawing Tools -->
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.css" />
+  <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.14.2/dist/leaflet-geoman.min.js"></script>
+
+  <!-- html2canvas for Map Screenshot Exporting -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            nato: {
+              blue: '#2B6CB0',
+              red: '#C53030',
+              green: '#2F855A',
+              yellow: '#D69E2E',
+              dark: '#0F172A'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    .leaflet-container {
+      background: #090d12 !important;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .tactical-marker-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,0.8));
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: #0b1120; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
+  </style>
+</head>
+
+<body class="h-full flex flex-col overflow-hidden select-none font-sans bg-slate-950 text-slate-200">
+
+  <!-- HEADER NAVIGATION -->
+  <header class="h-14 bg-slate-900 border-b border-slate-800/80 px-3 md:px-4 flex items-center justify-between z-30 shrink-0">
+    <div class="flex items-center space-x-2 md:space-x-3">
+      <!-- Mobile Sidebar Toggle Button -->
+      <button id="btnToggleSidebar" class="md:hidden w-9 h-9 rounded bg-slate-800 border border-slate-700 flex items-center justify-center text-sky-400">
+        <i class="fa-solid fa-bars text-base"></i>
+      </button>
+
+      <div class="w-8 h-8 rounded bg-sky-600/20 border border-sky-500/40 flex items-center justify-center text-sky-400">
+        <i class="fa-solid fa-map-location-dot text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-xs md:text-sm font-bold tracking-wider uppercase text-slate-100 flex items-center gap-1.5 md:gap-2">
+          EVERON C2 <span class="text-[9px] md:text-[10px] bg-emerald-950 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800/50 font-mono">PWA</span>
+        </h1>
+        <p class="text-[9px] md:text-[10px] text-slate-400 font-mono">TACTICAL PLANNER</p>
+      </div>
+    </div>
+
+    <!-- Live ArmA Coords & Scale Readout -->
+    <div class="hidden lg:flex items-center gap-6 font-mono text-xs bg-slate-950/80 px-3 py-1.5 rounded border border-slate-800">
+      <div class="flex items-center gap-1.5">
+        <span class="text-slate-500">6-GRID:</span>
+        <span id="hud6Grid" class="text-emerald-400 font-bold">000-000</span>
+      </div>
+      <div class="w-px h-3 bg-slate-800"></div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-slate-500">8-GRID:</span>
+        <span id="hud8Grid" class="text-sky-400 font-semibold">0000-0000</span>
+      </div>
+      <div class="w-px h-3 bg-slate-800"></div>
+      <div class="flex items-center gap-1.5">
+        <span class="text-slate-500">MAP POS:</span>
+        <span id="hudCoords" class="text-amber-400">X:0000 Y:0000</span>
+      </div>
+    </div>
+
+    <!-- Header Quick Buttons -->
+    <div class="flex items-center space-x-1.5 md:space-x-2">
+      <button id="btnQuickImport" class="px-2.5 py-1.5 text-xs font-mono rounded bg-emerald-700 hover:bg-emerald-600 text-white font-bold transition flex items-center gap-1.5 shadow">
+        <i class="fa-solid fa-file-image"></i>
+        <span class="hidden sm:inline">Import Map</span>
+      </button>
+
+      <button id="btnMeasureTool" class="px-2.5 py-1.5 text-xs font-mono rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-ruler-combined text-amber-400"></i>
+        <span class="hidden sm:inline">Ruler</span>
+      </button>
+
+      <button id="btnCapture" class="px-2.5 py-1.5 text-xs font-mono rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5">
+        <i class="fa-solid fa-camera text-sky-400"></i>
+        <span class="hidden sm:inline">Export</span>
+      </button>
+
+      <button id="btnDiscord" class="px-2.5 py-1.5 text-xs font-mono rounded bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition flex items-center gap-1.5">
+        <i class="fa-brands fa-discord"></i>
+        <span class="hidden sm:inline">SITREP</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- MAIN APPLICATION LAYOUT -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- SIDEBAR / MOBILE SLIDE-OVER CONTROL PANEL -->
+    <aside id="sidebar" class="fixed md:relative inset-y-0 left-0 w-80 max-w-[85vw] bg-slate-900/98 md:bg-slate-900/95 border-r border-slate-800 flex flex-col z-40 md:z-20 shrink-0 glass-panel transition-transform duration-300 transform -translate-x-full md:translate-x-0">
+      <!-- Mobile Close Button -->
+      <div class="flex md:hidden items-center justify-between px-3 py-2 border-b border-slate-800 text-slate-400">
+        <span class="font-mono text-xs font-bold uppercase text-slate-200"><i class="fa-solid fa-sliders mr-1 text-sky-400"></i> Controls</span>
+        <button id="btnCloseSidebar" class="p-1 text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- Tabs -->
+      <div class="flex border-b border-slate-800 text-xs font-mono">
+        <button id="tabMap" class="flex-1 py-2.5 text-center font-bold text-sky-400 border-b-2 border-sky-400 bg-slate-800/40">
+          <i class="fa-solid fa-map mr-1"></i> MAP
+        </button>
+        <button id="tabTools" class="flex-1 py-2.5 text-center font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-200">
+          <i class="fa-solid fa-pen-ruler mr-1"></i> DRAW
+        </button>
+        <button id="tabMarkers" class="flex-1 py-2.5 text-center font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-200">
+          <i class="fa-solid fa-shield-halved mr-1"></i> UNITS
+        </button>
+        <button id="tabPlans" class="flex-1 py-2.5 text-center font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-200">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> PLANS
+        </button>
+      </div>
+
+      <!-- Tab Content Area -->
+      <div class="flex-1 overflow-y-auto p-3 space-y-4 text-xs">
+
+        <!-- TAB: MAP IMPORT & SETTINGS -->
+        <div id="panelMap" class="space-y-4">
+          <!-- Drag & Drop Upload Zone -->
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">1. Upload Image File (JPG, PNG)</label>
+            <div id="dropZone" class="border-2 border-dashed border-sky-500/40 hover:border-sky-400 rounded-lg p-4 text-center bg-slate-950/60 hover:bg-slate-900 transition cursor-pointer group">
+              <i class="fa-solid fa-cloud-arrow-up text-2xl text-sky-400 group-hover:scale-110 transition-transform mb-2"></i>
+              <p class="text-xs font-mono text-slate-200 font-bold">Click or Drag & Drop Image</p>
+              <p class="text-[10px] text-slate-500 font-mono mt-1">Supports Everon-1989.jpg or any game map image</p>
+              <input type="file" id="mapFileInput" accept="image/*" class="hidden">
+            </div>
+          </div>
+
+          <!-- Image URL Input -->
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">2. Or Load Image via URL</label>
+            <div class="flex gap-1.5">
+              <input type="text" id="mapUrlInput" placeholder="https://..." class="flex-1 bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500">
+              <button id="btnLoadUrl" class="px-3 bg-sky-900/60 hover:bg-sky-800 border border-sky-700 rounded font-mono text-sky-300">Load</button>
+            </div>
+          </div>
+
+          <!-- Active Map Details Readout -->
+          <div class="bg-slate-950 p-3 rounded border border-slate-800 space-y-1.5 font-mono">
+            <div class="text-[10px] text-slate-500 uppercase tracking-wider border-b border-slate-800 pb-1">Current Map Status</div>
+            <div class="flex justify-between"><span class="text-slate-400">Status:</span><span id="mapStatusText" class="text-emerald-400 font-bold">Default Grid</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Resolution:</span><span id="mapResText" class="text-sky-400">2048 x 2048 px</span></div>
+            <div class="flex justify-between"><span class="text-slate-400">Aspect Ratio:</span><span id="mapAspectText" class="text-amber-400">1 : 1</span></div>
+          </div>
+
+          <button id="btnResetMap" class="w-full p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 font-mono text-xs flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-rotate-left"></i> Reset to Default Canvas
+          </button>
+        </div>
+
+        <!-- TAB: DRAWING & ANNOTATIONS -->
+        <div id="panelTools" class="space-y-4 hidden">
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">Drawing Tool Select</label>
+            <div class="grid grid-cols-2 gap-2 font-mono text-xs">
+              <button data-tool="polyline" class="tool-btn p-3 md:p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2 text-sky-400 active:scale-95 transition">
+                <i class="fa-solid fa-route text-base md:text-xs"></i> Line / Route
+              </button>
+              <button data-tool="polygon" class="tool-btn p-3 md:p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2 text-emerald-400 active:scale-95 transition">
+                <i class="fa-solid fa-draw-polygon text-base md:text-xs"></i> Area Zone
+              </button>
+              <button data-tool="rectangle" class="tool-btn p-3 md:p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2 text-amber-400 active:scale-95 transition">
+                <i class="fa-solid fa-vector-square text-base md:text-xs"></i> Box Sector
+              </button>
+              <button data-tool="circle" class="tool-btn p-3 md:p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2 text-rose-400 active:scale-95 transition">
+                <i class="fa-regular fa-circle text-base md:text-xs"></i> Radius Circle
+              </button>
+              <button data-tool="text" class="tool-btn p-3 md:p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-left flex items-center gap-2 text-purple-400 active:scale-95 transition">
+                <i class="fa-solid fa-font text-base md:text-xs"></i> Text Label
+              </button>
+              <button data-tool="nav" class="tool-btn p-3 md:p-2 rounded bg-sky-900/60 border border-sky-500/50 text-left flex items-center gap-2 text-white active:scale-95 transition">
+                <i class="fa-solid fa-hand text-base md:text-xs"></i> Pan / Nav
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">Color Palette</label>
+            <div class="flex items-center justify-between gap-2 px-1">
+              <button data-color="#C53030" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-red-600 ring-2 ring-white shadow-lg"></button>
+              <button data-color="#2B6CB0" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-blue-600 hover:ring-2 hover:ring-white shadow-lg"></button>
+              <button data-color="#2F855A" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-emerald-600 hover:ring-2 hover:ring-white shadow-lg"></button>
+              <button data-color="#D69E2E" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-amber-500 hover:ring-2 hover:ring-white shadow-lg"></button>
+              <button data-color="#805AD5" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-purple-600 hover:ring-2 hover:ring-white shadow-lg"></button>
+              <button data-color="#F7FAFC" class="color-btn w-9 h-9 md:w-7 md:h-7 rounded-full bg-slate-100 hover:ring-2 hover:ring-white shadow-lg"></button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">Color Palette</label>
+            <div class="flex items-center gap-2">
+              <button data-color="#C53030" class="color-btn w-7 h-7 rounded-full bg-red-600 ring-2 ring-white"></button>
+              <button data-color="#2B6CB0" class="color-btn w-7 h-7 rounded-full bg-blue-600 hover:ring-2 hover:ring-white"></button>
+              <button data-color="#2F855A" class="color-btn w-7 h-7 rounded-full bg-emerald-600 hover:ring-2 hover:ring-white"></button>
+              <button data-color="#D69E2E" class="color-btn w-7 h-7 rounded-full bg-amber-500 hover:ring-2 hover:ring-white"></button>
+              <button data-color="#805AD5" class="color-btn w-7 h-7 rounded-full bg-purple-600 hover:ring-2 hover:ring-white"></button>
+              <button data-color="#F7FAFC" class="color-btn w-7 h-7 rounded-full bg-slate-100 hover:ring-2 hover:ring-white"></button>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">Line Stroke Width</label>
+            <input type="range" id="weightSlider" min="1" max="10" value="3" class="w-full bg-slate-950 accent-sky-500">
+          </div>
+
+          <!-- Edit & Clear Controls -->
+          <div class="pt-3 border-t border-slate-800 space-y-1.5">
+            <button id="btnEditShapes" class="w-full p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-mono">
+              <i class="fa-solid fa-pen-to-square text-amber-400 mr-1"></i> Edit / Move Elements
+            </button>
+            <button id="btnDeleteShape" class="w-full p-2 rounded bg-red-950/40 hover:bg-red-900/60 border border-red-800/60 text-red-300 font-mono">
+              <i class="fa-solid fa-eraser mr-1"></i> Eraser Mode
+            </button>
+            <button id="btnClearAll" class="w-full p-2 rounded bg-slate-950 hover:bg-red-950/80 border border-slate-800 text-slate-400 hover:text-red-400 transition font-mono">
+              <i class="fa-solid fa-trash-can mr-1"></i> Clear Map Board
+            </button>
+          </div>
+        </div>
+
+        <!-- TAB: MILITARY UNITS & MARKERS -->
+        <div id="panelMarkers" class="space-y-4 hidden">
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 uppercase mb-1.5">APP-6 / MIL Tactical Icons</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button data-unit="infantry" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-person-rifle text-sky-400"></i> Infantry
+              </button>
+              <button data-unit="armor" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-shield-halved text-amber-400"></i> Armor / Mech
+              </button>
+              <button data-unit="mortar" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-bullseye text-rose-400"></i> Mortar / Arty
+              </button>
+              <button data-unit="recon" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-binoculars text-purple-400"></i> Recon
+              </button>
+              <button data-unit="hq" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-flag text-red-400"></i> Command HQ
+              </button>
+              <button data-unit="waypoint" class="unit-btn p-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-2 font-mono">
+                <i class="fa-solid fa-location-crosshairs text-emerald-400"></i> Waypoint
+              </button>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <label class="block text-[11px] font-mono text-slate-400 uppercase">Unit Callsign / Label</label>
+            <input type="text" id="inputUnitLabel" placeholder="e.g. ALPHA 1-1" class="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500">
+          </div>
+        </div>
+
+        <!-- TAB: MISSION PLANS & LOCAL STORAGE -->
+        <div id="panelPlans" class="space-y-4 hidden">
+          <div class="space-y-2">
+            <label class="block text-[11px] font-mono text-slate-400 uppercase">Local Storage Operation Plans</label>
+            <div class="flex gap-1.5">
+              <input type="text" id="inputPlanName" placeholder="Plan Name (e.g. OP EVERON)" class="flex-1 bg-slate-950 border border-slate-800 rounded px-2 py-1.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-sky-500">
+              <button id="btnSavePlan" class="px-3 bg-sky-900/60 hover:bg-sky-800 border border-sky-700 rounded font-mono text-sky-300">Save</button>
+            </div>
+            <div id="savedPlansList" class="space-y-1.5 pt-2 max-h-40 overflow-y-auto">
+              <!-- Dynamically populated saved plans -->
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800 space-y-2">
+            <label class="block text-[11px] font-mono text-slate-400 uppercase">JSON File Sharing</label>
+            <div class="flex gap-2">
+              <button id="btnExportJson" class="flex-1 py-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 font-mono text-xs flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-download text-sky-400"></i> Export JSON
+              </button>
+              <button id="btnImportJson" class="flex-1 py-2 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 font-mono text-xs flex items-center justify-center gap-1.5">
+                <i class="fa-solid fa-upload text-emerald-400"></i> Import JSON
+              </button>
+              <input type="file" id="jsonInput" accept=".json" class="hidden">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- CENTER MAP BOARD -->
+    <main id="mapContainer" class="flex-1 relative bg-slate-950 overflow-hidden">
+      <!-- Leaflet Map Container -->
+      <div id="map" class="w-full h-full z-0"></div>
+
+      <!-- Mobile Floating Coords Bar -->
+      <div class="lg:hidden absolute bottom-3 left-3 right-3 z-10 glass-panel px-3 py-1.5 rounded-lg border border-slate-700/80 flex items-center justify-between text-[11px] font-mono text-slate-300 pointer-events-none">
+        <div><span class="text-slate-500">GRD:</span> <span id="mobileHud6Grid" class="text-emerald-400 font-bold">000-000</span></div>
+        <div><span class="text-slate-500">POS:</span> <span id="mobileHudCoords" class="text-amber-400">X:0 Y:0</span></div>
+      </div>
+
+      <!-- Distance & Bearing Floating HUD -->
+      <div id="measureHud" class="hidden absolute top-4 left-4 right-4 md:right-auto z-10 glass-panel p-3 rounded border border-slate-700 text-xs font-mono space-y-1">
+      </div>
+    </main>
+
+  </div>
+
+  <!-- MODAL: DISCORD WEBHOOK BRIEFING -->
+  <div id="discordModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-lg p-5 w-full max-w-md shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2 font-mono">
+          <i class="fa-brands fa-discord text-indigo-400 text-lg"></i> DISCORD SITREP DISPATCH
+        </h3>
+        <button id="btnCloseDiscord" class="text-slate-500 hover:text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="block font-mono text-slate-400 mb-1">Discord Webhook URL</label>
+          <input type="text" id="webhookUrl" placeholder="https://discord.com/api/webhooks/..." class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-indigo-500">
+        </div>
+
+        <div>
+          <label class="block font-mono text-slate-400 mb-1">Commander's Briefing / SITREP</label>
+          <textarea id="webhookMsg" rows="3" class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-slate-200 font-mono focus:outline-none focus:border-indigo-500" placeholder="e.g. OP EVERON: Phase 1 objective clear. All squads advance along route ALPHA."></textarea>
+        </div>
+
+        <div>
+          <label class="block font-mono text-slate-400 mb-1">Tactical Map Preview Snapshot</label>
+          <div id="snapshotPreview" class="w-full h-32 bg-slate-950 border border-slate-800 rounded flex items-center justify-center overflow-hidden">
+            <span class="text-slate-600 font-mono text-[11px]">Rendering screenshot...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+        <button id="btnCancelDiscord" class="px-3 py-1.5 rounded bg-slate-800 text-slate-300 font-mono text-xs">Cancel</button>
+        <button id="btnSendDiscord" class="px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold flex items-center gap-1.5">
+          <i class="fa-solid fa-paper-plane"></i> Send SITREP
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-4 right-4 z-50 bg-slate-900 border border-sky-500/50 text-slate-200 text-xs font-mono px-4 py-2.5 rounded shadow-xl transform translate-y-20 opacity-0 transition-all duration-300 flex items-center gap-2">
+    <i id="toastIcon" class="fa-solid fa-circle-info text-sky-400"></i>
+    <span id="toastMsg">Notification</span>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // --- APP STATE & CONSTANTS ---
+      let map = null;
+      let mapImageOverlay = null;
+      let activeColor = '#C53030';
+      let activeWeight = 3;
+      let selectedUnit = 'infantry';
+      let currentTool = 'nav';
+      let capturedBlob = null;
+      
+      // Fixed map view lock state
+      let lastFixedCenter = null;
+      let lastFixedZoom = null;
+
+      // Ruler Measurement State
+      let isMeasuring = false;
+      let measurePoints = [];
+      let measureLine = null;
+
+      // Dynamic Map Dimension Settings (Simple CRS)
+      let mapWidth = 2048;
+      let mapHeight = 2048;
+      let bounds = [[0, 0], [mapHeight, mapWidth]];
+
+      function showToast(msg, type = 'info') {
+        const toast = document.getElementById('toast');
+        document.getElementById('toastMsg').innerText = msg;
+        toast.classList.remove('translate-y-20', 'opacity-0');
+        setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3000);
+      }
+
+      // --- INITIALIZE LEAFLET WITH CRS.SIMPLE ---
+      function initMap() {
+        if (map) map.remove();
+
+        bounds = [[0, 0], [mapHeight, mapWidth]];
+        map = L.map('map', {
+          crs: L.CRS.Simple,
+          preferCanvas: true, // HTML2Canvasでのキャプチャ漏れを防ぐためCanvas描画を有効化
+          minZoom: -3,
+          maxZoom: 5,
+          zoomSnap: 0,              // 0に設定することで無段階（スムーズ）ズームを有効化
+          zoomDelta: 0.1,           // ズーム操作の刻みを細かく設定
+          wheelPxPerZoomLevel: 120, // マウスホイールでの無段階ズームの感度調整
+          zoomControl: true,
+          attributionControl: false
+        });
+
+        // Load Default Tactical SVG Grid Map as fallback background
+        const defaultCanvas = document.createElement('canvas');
+        defaultCanvas.width = mapWidth;
+        defaultCanvas.height = mapHeight;
+        const ctx = defaultCanvas.getContext('2d');
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, mapWidth, mapHeight);
+
+        // Draw tactical grid lines
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x <= mapWidth; x += 128) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, mapHeight); ctx.stroke();
+        }
+        for (let y = 0; y <= mapHeight; y += 128) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(0, mapHeight); ctx.stroke();
+        }
+
+        mapImageOverlay = L.imageOverlay(defaultCanvas.toDataURL(), bounds).addTo(map);
+        map.fitBounds(bounds);
+        map.invalidateSize();
+
+        // Record initial center & zoom
+        lastFixedCenter = map.getCenter();
+        lastFixedZoom = map.getZoom();
+
+        // Update fixed center & zoom whenever the user stops panning or zooming
+        map.on('moveend zoomend', () => {
+          lastFixedCenter = map.getCenter();
+          lastFixedZoom = map.getZoom();
+        });
+
+        // Geoman Drawing Engine Setup
+        map.pm.addControls({
+          position: 'topleft',
+          drawMarker: false,
+          drawCircleMarker: false,
+          drawPolyline: false,
+          drawRectangle: false,
+          drawPolygon: false,
+          drawCircle: false,
+          editMode: false,
+          dragMode: false,
+          removalMode: false
+        });
+
+        // Map Coordinates & ArmA Grid Tracker
+        map.on('mousemove touchmove', (e) => {
+          const latlng = e.latlng || (e.touches && e.touches[0] ? map.mouseEventToLatLng(e.touches[0]) : null);
+          if (!latlng) return;
+
+          const y = Math.max(0, Math.min(mapHeight, Math.round(latlng.lat)));
+          const x = Math.max(0, Math.min(mapWidth, Math.round(latlng.lng)));
+
+          const g6X = Math.floor((x / mapWidth) * 1000).toString().padStart(3, '0');
+          const g6Y = Math.floor((y / mapHeight) * 1000).toString().padStart(3, '0');
+          const g8X = Math.floor((x / mapWidth) * 10000).toString().padStart(4, '0');
+          const g8Y = Math.floor((y / mapHeight) * 10000).toString().padStart(4, '0');
+
+          document.getElementById('hud6Grid').innerText = `${g6X}-${g6Y}`;
+          document.getElementById('hud8Grid').innerText = `${g8X}-${g8Y}`;
+          document.getElementById('hudCoords').innerText = `X:${x} Y:${y}`;
+
+          const mobGrid = document.getElementById('mobileHud6Grid');
+          const mobCoords = document.getElementById('mobileHudCoords');
+          if (mobGrid) mobGrid.innerText = `${g6X}-${g6Y}`;
+          if (mobCoords) mobCoords.innerText = `X:${x} Y:${y}`;
+
+          if (isMeasuring && measurePoints.length === 1) {
+            updateMeasurement(measurePoints[0], latlng);
+          }
+        });
+
+        // Handle map clicks for Unit Placement, Text Labels, and Ruler
+        map.on('click', (e) => {
+          if (currentTool === 'unit') {
+            placeUnitMarker(e.latlng);
+          } else if (currentTool === 'text') {
+            placeTextMarker(e.latlng);
+          } else if (isMeasuring) {
+            handleMeasureClick(e.latlng);
+          }
+        });
+      }
+
+      // --- HELPER & TOOL MANAGEMENT FUNCTIONS ---
+      function updateGeomanOptions() {
+        if (!map || !map.pm) return;
+        map.pm.setGlobalOptions({
+          pathOptions: {
+            color: activeColor,
+            fillColor: activeColor,
+            fillOpacity: 0.2,
+            weight: parseInt(activeWeight)
+          }
+        });
+      }
+
+      function disableAllTools() {
+        if (!map || !map.pm) return;
+        map.pm.disableDraw();
+        map.pm.disableGlobalEditMode();
+        map.pm.disableGlobalRemovalMode();
+        isMeasuring = false;
+        if (measureLine) {
+          map.removeLayer(measureLine);
+          measureLine = null;
+        }
+        document.getElementById('measureHud').classList.add('hidden');
+      }
+
+      // Drawing Tool Selection Buttons
+      document.querySelectorAll('.tool-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const tool = e.currentTarget.dataset.tool;
+          currentTool = tool;
+          disableAllTools();
+          updateGeomanOptions();
+
+          if (tool === 'nav') {
+            showToast('Pan / Navigation Mode', 'info');
+          } else if (tool === 'polyline') {
+            map.pm.enableDraw('Line');
+          } else if (tool === 'polygon') {
+            map.pm.enableDraw('Polygon');
+          } else if (tool === 'rectangle') {
+            map.pm.enableDraw('Rectangle');
+          } else if (tool === 'circle') {
+            map.pm.enableDraw('Circle');
+          } else if (tool === 'text') {
+            showToast('Text Label Mode: Click map to place text', 'info');
+          }
+        });
+      });
+
+      // Sidebar Mobile Toggle Controls
+      const sidebar = document.getElementById('sidebar');
+      const btnToggleSidebar = document.getElementById('btnToggleSidebar');
+      const btnCloseSidebar = document.getElementById('btnCloseSidebar');
+
+      if (btnToggleSidebar) {
+        btnToggleSidebar.addEventListener('click', () => {
+          sidebar.classList.remove('-translate-x-full');
+        });
+      }
+
+      if (btnCloseSidebar) {
+        btnCloseSidebar.addEventListener('click', () => {
+          sidebar.classList.add('-translate-x-full');
+        });
+      }
+
+      // Close mobile sidebar automatically on tool selection
+      document.querySelectorAll('.tool-btn, .unit-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (window.innerWidth < 768) {
+            sidebar.classList.add('-translate-x-full');
+          }
+        });
+      });
+
+      // Color selection buttons
+      document.querySelectorAll('.color-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          activeColor = e.currentTarget.dataset.color;
+          document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('ring-2', 'ring-white'));
+          e.currentTarget.classList.add('ring-2', 'ring-white');
+          updateGeomanOptions();
+        });
+      });
+
+      // Weight slider
+      document.getElementById('weightSlider').addEventListener('input', (e) => {
+        activeWeight = e.target.value;
+        updateGeomanOptions();
+      });
+
+      // Edit, Delete, Clear Controls
+      document.getElementById('btnEditShapes').addEventListener('click', () => {
+        disableAllTools();
+        map.pm.toggleGlobalEditMode();
+        showToast('Shape Editing Mode Enabled', 'info');
+      });
+
+      document.getElementById('btnDeleteShape').addEventListener('click', () => {
+        disableAllTools();
+        map.pm.toggleGlobalRemovalMode();
+        showToast('Eraser Mode: Click elements to delete', 'warning');
+      });
+
+      document.getElementById('btnClearAll').addEventListener('click', () => {
+        if (confirm('Clear all drawn shapes, markers, and tactical elements?')) {
+          map.eachLayer(layer => {
+            if ((layer instanceof L.Path || layer instanceof L.Marker) && layer !== mapImageOverlay) {
+              map.removeLayer(layer);
+            }
+          });
+          showToast('Map board cleared', 'info');
+        }
+      });
+
+      // --- UNIT MARKERS & TEXT PLACEMENT ---
+      const unitIcons = {
+        infantry: 'fa-person-rifle',
+        armor: 'fa-shield-halved',
+        mortar: 'fa-bullseye',
+        recon: 'fa-binoculars',
+        hq: 'fa-flag',
+        waypoint: 'fa-location-crosshairs'
+      };
+
+      document.querySelectorAll('.unit-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          selectedUnit = e.currentTarget.dataset.unit;
+          currentTool = 'unit';
+          disableAllTools();
+          document.querySelectorAll('.unit-btn').forEach(b => b.classList.remove('border-sky-500', 'bg-sky-950/60'));
+          e.currentTarget.classList.add('border-sky-500', 'bg-sky-950/60');
+          showToast(`Selected Unit: ${selectedUnit.toUpperCase()}. Click on map to place.`, 'info');
+        });
+      });
+
+      function placeUnitMarker(latlng) {
+        const label = document.getElementById('inputUnitLabel').value.trim() || selectedUnit.toUpperCase();
+        const iconHtml = `<div class="tactical-marker-icon px-2 py-1 bg-slate-900/90 border border-sky-400 rounded text-sky-400 text-xs font-mono shadow-xl flex items-center gap-1.5 whitespace-nowrap">
+          <i class="fa-solid ${unitIcons[selectedUnit] || 'fa-location-dot'}"></i>
+          <span>${label}</span>
+        </div>`;
+
+        const icon = L.divIcon({ html: iconHtml, className: '', iconSize: [80, 24], iconAnchor: [40, 12] });
+        L.marker(latlng, { icon }).addTo(map);
+        showToast(`Placed unit ${label}`, 'success');
+      }
+
+      function placeTextMarker(latlng) {
+        const text = prompt('Enter map label text:', 'HQ ALPHA');
+        if (!text) return;
+        const iconHtml = `<div class="px-2 py-0.5 bg-slate-950/80 border border-slate-700 rounded text-slate-100 text-xs font-mono shadow-md whitespace-nowrap">${text}</div>`;
+        const icon = L.divIcon({ html: iconHtml, className: '', iconAnchor: [10, 10] });
+        L.marker(latlng, { icon }).addTo(map);
+      }
+
+      // --- TACTICAL RULER & BEARING TOOL ---
+      document.getElementById('btnMeasureTool').addEventListener('click', () => {
+        disableAllTools();
+        isMeasuring = true;
+        measurePoints = [];
+        document.getElementById('measureHud').classList.remove('hidden');
+        document.getElementById('measureHud').innerHTML = `
+          <div class="flex items-center justify-between font-bold text-amber-400 border-b border-slate-800 pb-1 mb-1">
+            <span><i class="fa-solid fa-ruler-combined mr-1"></i> TACTICAL RULER</span>
+            <button id="btnCloseMeasure" class="text-slate-500 hover:text-slate-300"><i class="fa-solid fa-xmark"></i></button>
+          </div>
+          <div class="flex justify-between"><span class="text-slate-400">Distance:</span><span id="measureDist" class="text-slate-200 font-bold">Click Start Point</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Bearing:</span><span id="measureBearing" class="text-sky-400 font-bold">0° MAG</span></div>
+        `;
+        document.getElementById('btnCloseMeasure').addEventListener('click', disableAllTools);
+        showToast('Tactical Ruler: Click 2 points on map', 'info');
+      });
+
+      function handleMeasureClick(latlng) {
+        if (measurePoints.length === 0) {
+          measurePoints.push(latlng);
+          document.getElementById('measureDist').innerText = 'Click End Point';
+        } else if (measurePoints.length === 1) {
+          measurePoints.push(latlng);
+          updateMeasurement(measurePoints[0], measurePoints[1]);
+          isMeasuring = false;
+        }
+      }
+
+      function updateMeasurement(p1, p2) {
+        const dx = p2.lng - p1.lng;
+        const dy = p2.lat - p1.lat;
+        const distMeters = Math.round(Math.sqrt(dx * dx + dy * dy));
+
+        let angle = Math.atan2(dx, dy) * (180 / Math.PI);
+        if (angle < 0) angle += 360;
+        const bearing = Math.round(angle);
+
+        const distEl = document.getElementById('measureDist');
+        const bearingEl = document.getElementById('measureBearing');
+        if (distEl) distEl.innerText = `${distMeters} m (${(distMeters / 1000).toFixed(2)} km)`;
+        if (bearingEl) bearingEl.innerText = `${bearing}° MAG`;
+
+        if (measureLine) map.removeLayer(measureLine);
+        measureLine = L.polyline([p1, p2], { color: '#D69E2E', weight: 2, dashArray: '6, 6' }).addTo(map);
+      }
+
+      // --- MISSION PLANS STORAGE MANAGEMENT ---
+      document.getElementById('btnSavePlan').addEventListener('click', () => {
+        const name = document.getElementById('inputPlanName').value.trim();
+        if (!name) {
+          showToast('Enter plan name', 'error');
+          return;
+        }
+
+        const layersData = [];
+        map.eachLayer(layer => {
+          if ((layer instanceof L.Path || layer instanceof L.Marker) && layer !== mapImageOverlay) {
+            if (layer.toGeoJSON) layersData.push(layer.toGeoJSON());
+          }
+        });
+
+        const savedPlans = JSON.parse(localStorage.getItem('everon_op_plans') || '{}');
+        savedPlans[name] = layersData;
+        localStorage.setItem('everon_op_plans', JSON.stringify(savedPlans));
+
+        document.getElementById('inputPlanName').value = '';
+        loadSavedPlansList();
+        showToast(`Saved plan "${name}"`, 'success');
+      });
+
+      function loadSavedPlansList() {
+        const listContainer = document.getElementById('savedPlansList');
+        if (!listContainer) return;
+        listContainer.innerHTML = '';
+
+        const savedPlans = JSON.parse(localStorage.getItem('everon_op_plans') || '{}');
+        const planNames = Object.keys(savedPlans);
+
+        if (planNames.length === 0) {
+          listContainer.innerHTML = '<div class="text-[10px] text-slate-500 font-mono italic">No saved local plans</div>';
+          return;
+        }
+
+        planNames.forEach(name => {
+          const item = document.createElement('div');
+          item.className = 'flex items-center justify-between p-1.5 bg-slate-950 border border-slate-800 rounded font-mono text-xs';
+          item.innerHTML = `
+            <span class="text-slate-300 font-bold truncate max-w-[130px]">${name}</span>
+            <div class="flex gap-1">
+              <button class="load-plan-btn px-2 py-0.5 bg-sky-900/60 hover:bg-sky-800 text-sky-300 rounded text-[10px]">Load</button>
+              <button class="del-plan-btn px-1.5 py-0.5 bg-red-950/60 hover:bg-red-900 text-red-400 rounded text-[10px]"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          `;
+
+          item.querySelector('.load-plan-btn').addEventListener('click', () => {
+            const planData = savedPlans[name];
+            if (planData) {
+              L.geoJSON(planData, { style: () => ({ color: activeColor, weight: activeWeight }) }).addTo(map);
+              showToast(`Loaded plan "${name}"`, 'success');
+            }
+          });
+
+          item.querySelector('.del-plan-btn').addEventListener('click', () => {
+            delete savedPlans[name];
+            localStorage.setItem('everon_op_plans', JSON.stringify(savedPlans));
+            loadSavedPlansList();
+            showToast(`Deleted plan "${name}"`, 'info');
+          });
+
+          listContainer.appendChild(item);
+        });
+      }
+
+      // --- DISCORD WEBHOOK INTEGRATION ---
+      const discordModal = document.getElementById('discordModal');
+
+      document.getElementById('btnDiscord').addEventListener('click', async () => {
+        discordModal.classList.remove('hidden');
+        const preview = document.getElementById('snapshotPreview');
+        preview.innerHTML = '<span class="text-slate-500 font-mono text-[11px]"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Capturing screenshot...</span>';
+
+        // Ensure map is locked at last fixed view before capture
+        if (lastFixedCenter && lastFixedZoom !== null) {
+          map.setView(lastFixedCenter, lastFixedZoom, { animate: false });
+        }
+        map.invalidateSize({ animate: false });
+
+        // Wait brief delay for Leaflet SVG layers and tile rendering to fully settle
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // キャプチャ時の一時的なグリッド線非表示処理
+        const mapOverlayElement = mapImageOverlay ? mapImageOverlay.getElement() : null;
+        const originalOpacity = mapOverlayElement ? mapOverlayElement.style.opacity : '';
+        if (mapOverlayElement && mapImageOverlay._url && mapImageOverlay._url.startsWith('data:image/canvas')) {
+          mapOverlayElement.style.opacity = '0';
+        }
+
+        try {
+          const mapEl = document.getElementById('map');
+          const canvas = await html2canvas(mapEl, {
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            scale: window.devicePixelRatio || 1,
+            ignoreElements: (element) => element.classList.contains('leaflet-control-container')
+          });
+          canvas.toBlob((blob) => {
+            capturedBlob = blob;
+            const imgUrl = URL.createObjectURL(blob);
+            preview.innerHTML = `<img src="${imgUrl}" class="h-full w-full object-cover">`;
+          }, 'image/png');
+        } catch(e) {
+          preview.innerHTML = '<span class="text-red-400 font-mono text-[11px]">Screenshot capture failed</span>';
+        } finally {
+          // グリッド線の表示状態を元に戻す
+          if (mapOverlayElement && mapImageOverlay._url && mapImageOverlay._url.startsWith('data:image/canvas')) {
+            mapOverlayElement.style.opacity = originalOpacity;
+          }
+        }
+      });
+
+      document.getElementById('btnCloseDiscord').addEventListener('click', () => discordModal.classList.add('hidden'));
+      document.getElementById('btnCancelDiscord').addEventListener('click', () => discordModal.classList.add('hidden'));
+
+      document.getElementById('btnSendDiscord').addEventListener('click', async () => {
+        const webhookUrl = document.getElementById('webhookUrl').value.trim();
+        const message = document.getElementById('webhookMsg').value.trim() || 'Everon Operation SITREP Dispatch';
+
+        if (!webhookUrl) {
+          showToast('Provide Discord Webhook URL', 'error');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('payload_json', JSON.stringify({
+          content: `**[TACTICAL SITREP BRIEFING]**\n${message}`
+        }));
+
+        if (capturedBlob) {
+          formData.append('file', capturedBlob, `Everon_SITREP_${Date.now()}.png`);
+        }
+
+        showToast('Sending SITREP to Discord...', 'info');
+
+        try {
+          const res = await fetch(webhookUrl, { method: 'POST', body: formData });
+          if (res.ok) {
+            showToast('SITREP Sent Successfully!', 'success');
+            discordModal.classList.add('hidden');
+          } else {
+            showToast(`Discord Webhook error: ${res.status}`, 'error');
+          }
+        } catch(e) {
+          showToast('Failed to reach Discord Webhook', 'error');
+        }
+      });
+
+      // --- DYNAMIC MAP IMAGE LOADER & BOUND CALCULATOR ---
+      function loadMapImageSrc(imageSrc, nameHint = 'Custom Image') {
+        showToast('Loading map image...', 'info');
+        const img = new Image();
+        img.crossOrigin = 'Anonymous';
+        img.onload = function() {
+          mapWidth = img.naturalWidth || 2048;
+          mapHeight = img.naturalHeight || 2048;
+          bounds = [[0, 0], [mapHeight, mapWidth]];
+
+          if (mapImageOverlay) map.removeLayer(mapImageOverlay);
+
+          mapImageOverlay = L.imageOverlay(imageSrc, bounds).addTo(map);
+          map.setMaxBounds(bounds);
+
+          // マップ読み込み時に全域を画面いっぱいにフィット表示
+          map.fitBounds(bounds);
+          map.invalidateSize();
+
+          // 位置記憶を全体表示状態に更新
+          lastFixedCenter = map.getCenter();
+          lastFixedZoom = map.getZoom();
+
+          // Update HUD
+          document.getElementById('mapStatusText').innerText = nameHint;
+          document.getElementById('mapResText').innerText = `${mapWidth} x ${mapHeight} px`;
+          const aspect = (mapWidth / mapHeight).toFixed(2);
+          document.getElementById('mapAspectText').innerText = `${aspect} : 1`;
+
+          showToast(`Map Loaded Successfully! (${mapWidth}x${mapHeight}px)`, 'success');
+        };
+        img.onerror = function() {
+          showToast('Failed to load map image URL / File.', 'error');
+        };
+        img.src = imageSrc;
+      }
+
+      // Drop Zone & File Event Handlers
+      const dropZone = document.getElementById('dropZone');
+      const fileInput = document.getElementById('mapFileInput');
+
+      dropZone.addEventListener('click', () => fileInput.click());
+
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('border-sky-400', 'bg-slate-900');
+      });
+
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-sky-400', 'bg-slate-900');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('border-sky-400', 'bg-slate-900');
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleImageFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+          handleImageFile(e.target.files[0]);
+        }
+      });
+
+      function handleImageFile(file) {
+        if (!file.type.startsWith('image/')) {
+          showToast('Please upload a valid image file (JPG/PNG/WebP)', 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          loadMapImageSrc(evt.target.result, file.name);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      document.getElementById('btnLoadUrl').addEventListener('click', () => {
+        const url = document.getElementById('mapUrlInput').value.trim();
+        if (url) {
+          loadMapImageSrc(url, 'Web URL Map');
+        } else {
+          showToast('Enter valid Image URL', 'error');
+        }
+      });
+
+      document.getElementById('btnQuickImport').addEventListener('click', () => {
+        // Trigger tab switch to MAP and open file chooser
+        document.getElementById('tabMap').click();
+        fileInput.click();
+      });
+
+      document.getElementById('btnResetMap').addEventListener('click', () => {
+        mapWidth = 2048;
+        mapHeight = 2048;
+        initMap();
+        document.getElementById('mapStatusText').innerText = 'Default Grid';
+        document.getElementById('mapResText').innerText = '2048 x 2048 px';
+        document.getElementById('mapAspectText').innerText = '1 : 1';
+        showToast('Map canvas reset to default', 'info');
+      });
+
+      // --- SIDEBAR TABS & TOOL CONTROLS ---
+      const tabs = { tabMap: 'panelMap', tabTools: 'panelTools', tabMarkers: 'panelMarkers', tabPlans: 'panelPlans' };
+      Object.keys(tabs).forEach(t => {
+        document.getElementById(t).addEventListener('click', () => {
+          Object.keys(tabs).forEach(k => {
+            document.getElementById(k).className = 'flex-1 py-2.5 text-center font-bold text-slate-400 border-b-2 border-transparent hover:text-slate-200';
+            document.getElementById(tabs[k]).classList.add('hidden');
+          });
+          document.getElementById(t).className = 'flex-1 py-2.5 text-center font-bold text-sky-400 border-b-2 border-sky-400 bg-slate-800/40';
+          document.getElementById(tabs[t]).classList.remove('hidden');
+        });
+      });
+
+      // Export PNG Feature
+      document.getElementById('btnCapture').addEventListener('click', async () => {
+        showToast('Rendering PNG image...', 'info');
+
+        // Lock map view to last fixed position before taking screenshot
+        if (lastFixedCenter && lastFixedZoom !== null) {
+          map.setView(lastFixedCenter, lastFixedZoom, { animate: false });
+        }
+        map.invalidateSize({ animate: false });
+
+        // Wait brief delay for Leaflet Canvas layers to fully render
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // キャプチャ時の一時的なグリッド線非表示処理
+        const mapOverlayElement = mapImageOverlay ? mapImageOverlay.getElement() : null;
+        const originalOpacity = mapOverlayElement ? mapOverlayElement.style.opacity : '';
+        if (mapOverlayElement && mapImageOverlay._url && mapImageOverlay._url.startsWith('data:image/canvas')) {
+          mapOverlayElement.style.opacity = '0';
+        }
+
+        try {
+          const mapEl = document.getElementById('map');
+          const canvas = await html2canvas(mapEl, {
+            useCORS: true,
+            allowTaint: true,
+            logging: false,
+            scale: window.devicePixelRatio || 1,
+            ignoreElements: (element) => element.classList.contains('leaflet-control-container')
+          });
+          const a = document.createElement('a');
+          a.href = canvas.toDataURL('image/png');
+          a.download = `Everon_Tactical_Map_${Date.now()}.png`;
+          a.click();
+          showToast('Map PNG Exported!', 'success');
+        } catch(e) {
+          showToast('PNG Export failed', 'error');
+        } finally {
+          // グリッド線の表示状態を元に戻す
+          if (mapOverlayElement && mapImageOverlay._url && mapImageOverlay._url.startsWith('data:image/canvas')) {
+            mapOverlayElement.style.opacity = originalOpacity;
+          }
+        }
+      });
+
+      // JSON Export/Import
+      document.getElementById('btnExportJson').addEventListener('click', () => {
+        const layersData = [];
+        map.eachLayer(layer => {
+          if ((layer instanceof L.Path || layer instanceof L.Marker) && layer !== mapImageOverlay) {
+            if (layer.toGeoJSON) layersData.push(layer.toGeoJSON());
+          }
+        });
+        const blob = new Blob([JSON.stringify(layersData, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Everon_OpPlan_${Date.now()}.json`;
+        a.click();
+        showToast('Plan exported as JSON', 'success');
+      });
+
+      document.getElementById('btnImportJson').addEventListener('click', () => document.getElementById('jsonInput').click());
+
+      document.getElementById('jsonInput').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            try {
+              const data = JSON.parse(evt.target.result);
+              L.geoJSON(data, { style: () => ({ color: activeColor, weight: activeWeight }) }).addTo(map);
+              showToast('JSON plan imported successfully', 'success');
+            } catch(err) {
+              showToast('Invalid JSON file', 'error');
+            }
+          };
+          reader.readAsText(file);
+        }
+      });
+
+      initMap();
+      loadSavedPlansList();
+    });
+  </script>
+</body>
+</html>
